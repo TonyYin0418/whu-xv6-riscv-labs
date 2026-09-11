@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -118,6 +120,33 @@ walkaddr(pagetable_t pagetable, uint64 va)
   return pa;
 }
 
+// 系统调用在内核里访问用户地址，不会进入 usertrap，所以在这里补页
+static uint64
+lazyalloc(pagetable_t pagetable, uint64 va)
+{
+  struct proc *p = myproc();
+  char *mem;
+
+  // 只处理当前进程自己的页表和 sbrk 合法范围内的地址
+  if(p == 0 || pagetable != p->pagetable)
+    return 0;
+  if(va >= p->sz || va < PGROUNDDOWN(p->tf->sp))
+    return 0;
+
+  va = PGROUNDDOWN(va);
+  mem = kalloc();
+  if(mem == 0)
+    return 0;
+
+  memset(mem, 0, PGSIZE);
+  if(mappages(pagetable, va, PGSIZE, (uint64)mem,
+              PTE_W | PTE_X | PTE_R | PTE_U) != 0){
+    kfree(mem);
+    return 0;
+  }
+  return (uint64)mem;
+}
+
 // add a mapping to the kernel page table.
 // only used when booting.
 // does not flush TLB or enable paging.
@@ -187,23 +216,20 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
   a = PGROUNDDOWN(va);
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
-    if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
-    if((*pte & PTE_V) == 0){
-      printf("va=%p pte=%p\n", a, *pte);
-      panic("uvmunmap: not mapped");
+    pte = walk(pagetable, a, 0);
+    // 延迟分配以后，中间没有映射的页面是正常的，直接跳过
+    if(pte != 0 && (*pte & PTE_V) != 0){
+      if(PTE_FLAGS(*pte) == PTE_V)
+        panic("uvmunmap: not a leaf");
+      if(do_free){
+        pa = PTE2PA(*pte);
+        kfree((void*)pa);
+      }
+      *pte = 0;
     }
-    if(PTE_FLAGS(*pte) == PTE_V)
-      panic("uvmunmap: not a leaf");
-    if(do_free){
-      pa = PTE2PA(*pte);
-      kfree((void*)pa);
-    }
-    *pte = 0;
     if(a == last)
       break;
     a += PGSIZE;
-    pa += PGSIZE;
   }
 }
 
@@ -325,10 +351,10 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
-    if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+    pte = walk(old, i, 0);
+    // 延迟分配留下的空页不用复制，子进程以后访问时也会自己分配
+    if(pte == 0 || (*pte & PTE_V) == 0)
+      continue;
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
@@ -370,6 +396,9 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
+    // read 等系统调用可能直接把数据写进一个还没真正分配的地址
+    if(pa0 == 0)
+      pa0 = lazyalloc(pagetable, va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (dstva - va0);
@@ -395,6 +424,9 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
+    // write 等系统调用也可能直接读取一个还没真正分配的地址
+    if(pa0 == 0)
+      pa0 = lazyalloc(pagetable, va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);
@@ -422,6 +454,9 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
+    // 文件名等字符串也可能放在延迟分配的页里
+    if(pa0 == 0)
+      pa0 = lazyalloc(pagetable, va0);
     if(pa0 == 0)
       return -1;
     n = PGSIZE - (srcva - va0);

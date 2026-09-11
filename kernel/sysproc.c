@@ -46,9 +46,19 @@ sys_sbrk(void)
 
   if(argint(0, &n) < 0)
     return -1;
-  addr = myproc()->sz;
-  if(growproc(n) < 0)
-    return -1;
+
+  struct proc *p = myproc();
+  addr = p->sz;
+
+  if(n < 0) {
+    // 缩小空间时，已经用过的物理页还是要正常释放
+    if(growproc(n) < 0)
+      return -1;
+  } else {
+    // 扩大空间时先只记大小，真正访问时再分配页
+    p->sz += n;
+  }
+
   return addr;
 }
 

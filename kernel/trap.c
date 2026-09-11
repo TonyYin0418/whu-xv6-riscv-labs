@@ -65,6 +65,36 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if(r_scause() == 13 || r_scause() == 15){
+    // 缺页处理，需要手动将新分配的物理页映射到错误地址
+    // stval 是虚拟地址，sepc 是错误指令地址
+    uint64 va;
+    char *mem;
+
+    va = r_stval();
+    if(va >= p->sz || va < PGROUNDDOWN(p->tf->sp)){
+      // 超过进程大小，或者跑到用户栈下面，都不合法
+      p->killed = 1;
+    } else {
+      va = PGROUNDDOWN(va); // 一次映射一整页，所以先对齐到页首
+      if(walkaddr(p->pagetable, va) != 0){
+        // 已经映射过还出错，说明不是延迟分配造成的
+        p->killed = 1;
+      } else {
+        mem = kalloc();
+        if(mem == 0){ // 物理内存不够，不能让内核崩溃，只杀掉当前进程
+          p->killed = 1;
+        } else { // 新分配的用户页必须清零，避免读到别人留下的数据
+          memset(mem, 0, PGSIZE);
+          if(mappages(p->pagetable, va, PGSIZE, (uint64)mem,
+                      PTE_W | PTE_X | PTE_R | PTE_U) != 0){
+            // 映射失败时要把刚申请的物理页还回去
+            kfree(mem);
+            p->killed = 1;
+          }
+        }
+      }
+    }
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {
@@ -210,4 +240,3 @@ devintr()
     return 0;
   }
 }
-
