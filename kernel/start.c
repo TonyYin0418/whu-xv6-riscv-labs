@@ -37,6 +37,11 @@ start()
   w_medeleg(0xffff);
   w_mideleg(0xffff);
 
+  // Allow supervisor mode to access all physical memory. Older QEMU
+  // versions allowed this implicitly; current versions require PMP setup.
+  w_pmpaddr0(0x3fffffffffffffull);
+  w_pmpcfg0(0xf);
+
   // ask for clock interrupts.
   timerinit();
 
