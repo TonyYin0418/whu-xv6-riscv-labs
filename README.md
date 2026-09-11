@@ -48,10 +48,29 @@ git switch --track origin/lab3
 ```
 
 切换前请使用 `git status` 检查尚未提交的修改，避免把一个实验的改动带入另一个实验。
-`labN-start` 标签记录相应实验开始前的平台快照；存在 `labN-finished` 标签时，它表示该
-实验曾记录过完成版本。
+`labN-start` 标签记录相应实验开始前的平台快照；实验的当前内容与进度以对应分支为准。
 
-## 已验证的设备与工具环境
+## 构建与运行
+
+xv6 需要 RISC-V 交叉编译工具链，并通过 QEMU 运行，不能作为原生 macOS 程序编译。
+在 Apple Silicon Mac 上可使用 Homebrew 安装依赖：
+
+```sh
+brew install qemu riscv64-elf-gcc
+```
+
+进入具体 Lab 分支后执行：
+
+```sh
+make clean
+make qemu
+```
+
+退出 QEMU：先按 `Ctrl-A`，再按 `X`。Ubuntu 可使用
+`gcc-riscv64-linux-gnu`、`binutils-riscv64-linux-gnu` 和
+`qemu-system-misc`。在不同操作系统之间切换工作树后应始终先执行 `make clean`。
+
+### 验证环境
 
 本仓库于 2026 年 9 月在以下环境完成过干净构建和启动验证：
 
@@ -66,7 +85,7 @@ Apple M3 是 ARM64 架构，而 xv6 的目标架构是 RISC-V。因此内核和�
 交叉编译器生成，再交给 QEMU 模拟运行；只有制作文件系统镜像的 `mkfs` 等宿主机工具
 由 Apple Clang 编译为原生 macOS 程序。
 
-## 为 MacBook 运行所作的兼容改动
+### macOS 兼容
 
 各 Lab 分支保留了以下三类平台兼容改动。它们用于适配当前 Homebrew 工具链与新版
 QEMU，不改变课程实验要求的核心逻辑。
@@ -87,28 +106,9 @@ QEMU，不改变课程实验要求的核心逻辑。
 提交课程平台前，应把上述宿主机兼容改动与 Lab 实现分开检查，只提交课程规则允许的
 内容。
 
-## 构建与运行
-
-xv6 需要 RISC-V 交叉编译工具链，并通过 QEMU 运行，不能作为原生 macOS 程序编译。
-在上述 MacBook Air 上可使用 Homebrew 安装依赖：
-
-```sh
-brew install qemu riscv64-elf-gcc
-```
-
-进入具体 Lab 分支后执行：
-
-```sh
-make clean
-make qemu
-```
-
-退出 QEMU：先按 `Ctrl-A`，再按 `X`。Ubuntu 可使用
-`gcc-riscv64-linux-gnu`、`binutils-riscv64-linux-gnu` 和
-`qemu-system-misc`。在不同操作系统之间切换工作树后应始终先执行 `make clean`。
-
 ## 说明
 
+- **请独立完成课程实验；在尚未独立完成相应 Lab 时，请勿查看或参考本仓库中的实现代码。**
 - 本仓库用于课程学习与实验记录，具体要求以课程发布的实验文档和评分标准为准。
 - 各 Lab 分支中的平台兼容改动与实验实现应分别检查，提交课程平台时只保留要求的内容。
 - xv6 原始代码版权归其作者所有；项目背景及原作者信息请参阅各 Lab 分支中的原始说明。
