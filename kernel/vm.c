@@ -310,19 +310,13 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
-// Given a parent process's page table, copy
-// its memory into a child's page table.
-// Copies both the page table and the
-// physical memory.
-// returns 0 on success, -1 on failure.
-// frees any allocated pages on failure.
+// 让子进程通过 COW 共享父进程的用户物理页。
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
@@ -331,19 +325,59 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
-      goto err;
+
+    // 只有原本可写的页才标记为 COW，原本只读的代码页保持只读。
+    if(flags & PTE_W){
+      flags = (flags & ~PTE_W) | PTE_COW;
+      *pte = PA2PTE(pa) | flags;
     }
+
+    if(mappages(new, i, PGSIZE, pa, flags) != 0)
+      goto err;
+    kaddref((void*)pa);
   }
+  sfence_vma();
   return 0;
 
  err:
-  uvmunmap(new, 0, i, 1);
+  if(i > 0)
+    uvmunmap(new, 0, i, 1);
+  sfence_vma();
   return -1;
+}
+
+// 将 va 所在的 COW 页转换为当前页表独占的可写页。
+int
+cowalloc(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+  uint flags;
+  char *mem;
+
+  va = PGROUNDDOWN(va);
+  if(va >= MAXVA || (pte = walk(pagetable, va, 0)) == 0)
+    return -1;
+  if((*pte & (PTE_V | PTE_U | PTE_COW)) != (PTE_V | PTE_U | PTE_COW))
+    return -1;
+
+  pa = PTE2PA(*pte);
+  flags = PTE_FLAGS(*pte);
+
+  // 已无其他共享者时只需恢复写权限。
+  if(kgetref((void*)pa) == 1){
+    *pte = PA2PTE(pa) | ((flags | PTE_W) & ~PTE_COW);
+    sfence_vma();
+    return 0;
+  }
+
+  if((mem = kalloc()) == 0)
+    return -1;
+  memmove(mem, (char*)pa, PGSIZE);
+  *pte = PA2PTE(mem) | ((flags | PTE_W) & ~PTE_COW);
+  sfence_vma();
+  kfree((void*)pa);
+  return 0;
 }
 
 // mark a PTE invalid for user access.
@@ -369,6 +403,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
+    if(va0 >= MAXVA)
+      return -1;
+    pte_t *pte = walk(pagetable, va0, 0);
+    // 内核直接写物理地址不会触发用户异常，需要主动处理 COW。
+    if(pte && (*pte & PTE_COW) && cowalloc(pagetable, va0) < 0)
+      return -1;
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0)
       return -1;
