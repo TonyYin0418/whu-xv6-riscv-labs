@@ -122,6 +122,14 @@ changes under the platform's rules.
   A submission archive must contain only the lab files requested by the course;
   exclude macOS compatibility changes, guides, build products, and local notes.
 
+## Documentation scope
+
+`README.md` is reader-facing. Keep it focused on project introduction, branch
+navigation, dependency installation, building, running, and public test-entry
+commands. Do not put internal branch-reconstruction rules, commit ordering,
+archive handling, submission-package filtering, or agent workflow into it.
+Those maintenance rules belong in this `AGENTS.md` file.
+
 ## Lab branch organization
 
 `main` is the remote default branch. It contains repository guidance only and
