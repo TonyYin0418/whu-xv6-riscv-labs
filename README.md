@@ -6,6 +6,20 @@
 > 当前分支是仓库导航分支，不包含任何一个 Lab 的实验实现。
 > 请切换到对应的 `labN` 分支查看代码、测试与提交记录。
 
+## 快速开始
+
+以 Lab4 为例，克隆仓库、切换实验分支并启动 xv6：
+
+```sh
+git clone https://github.com/TonyYin0418/whu-xv6-riscv-labs.git
+cd whu-xv6-riscv-labs
+git switch --track origin/lab4
+make clean
+make qemu
+```
+
+退出 QEMU：先按 `Ctrl-A`，再按 `X`。
+
 ## 实验基础
 
 实验以麻省理工学院（MIT）PDOS 实验室的教学操作系统
@@ -48,7 +62,6 @@ git switch --track origin/lab3
 ```
 
 切换前请使用 `git status` 检查尚未提交的修改，避免把一个实验的改动带入另一个实验。
-`labN-start` 标签记录相应实验开始前的平台快照；实验的当前内容与进度以对应分支为准。
 
 ## 构建与运行
 
@@ -66,9 +79,19 @@ make clean
 make qemu
 ```
 
-退出 QEMU：先按 `Ctrl-A`，再按 `X`。Ubuntu 可使用
+Ubuntu 可使用
 `gcc-riscv64-linux-gnu`、`binutils-riscv64-linux-gnu` 和
 `qemu-system-misc`。在不同操作系统之间切换工作树后应始终先执行 `make clean`。
+
+### 实验验证
+
+请以对应 Lab 发布的实验文档和评分要求为准。Lab4 可在 xv6 shell 中运行：
+
+```sh
+cowtest
+```
+
+其测试程序源文件为 `user/cowtest.c`。
 
 ### 验证环境
 
@@ -103,12 +126,8 @@ QEMU，不改变课程实验要求的核心逻辑。
    Supervisor 模式时触发指令访问异常，控制台也不会出现启动信息。这一处理沿用现代
    xv6 的做法。
 
-提交课程平台前，应把上述宿主机兼容改动与 Lab 实现分开检查，只提交课程规则允许的
-内容。
-
 ## 说明
 
 - **请独立完成课程实验；在尚未独立完成相应 Lab 时，请勿查看或参考本仓库中的实现代码。**
 - 本仓库用于课程学习与实验记录，具体要求以课程发布的实验文档和评分标准为准。
-- 各 Lab 分支中的平台兼容改动与实验实现应分别检查，提交课程平台时只保留要求的内容。
 - xv6 原始代码版权归其作者所有；项目背景及原作者信息请参阅各 Lab 分支中的原始说明。
