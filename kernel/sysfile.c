@@ -6,6 +6,7 @@
 
 #include "types.h"
 #include "riscv.h"
+#include "memlayout.h"
 #include "defs.h"
 #include "param.h"
 #include "stat.h"
@@ -453,6 +454,62 @@ sys_exec(void)
 }
 
 uint64
+sys_mmap(void)
+{
+  uint64 addr;
+  int length, prot, flags, fd, offset, i;
+  struct file *f;
+  struct proc *p = myproc();
+  struct vma *v = 0;
+
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0 ||
+     argint(2, &prot) < 0 || argint(3, &flags) < 0 ||
+     argint(4, &fd) < 0 || argint(5, &offset) < 0)
+    return -1;
+  if(addr != 0 || length <= 0 || offset != 0 ||
+     (prot & ~(PROT_READ | PROT_WRITE)) != 0 ||
+     (flags != MAP_SHARED && flags != MAP_PRIVATE) ||
+     argfd(4, 0, &f) < 0 || f->type != FD_INODE)
+    return -1;
+  if((prot & PROT_READ) && !f->readable)
+    return -1;
+  if((flags & MAP_SHARED) && (prot & PROT_WRITE) && !f->writable)
+    return -1;
+
+  for(i = 0; i < NVMA; i++)
+    if(!p->vma[i].used){
+      v = &p->vma[i];
+      break;
+    }
+  if(v == 0)
+    return -1;
+
+  uint64 len = PGROUNDUP((uint64)length);
+  if(p->mmaptop + len >= TRAPFRAME)
+    return -1;
+  v->addr = p->mmaptop;
+  v->length = len;
+  v->offset = offset;
+  v->prot = prot;
+  v->flags = flags;
+  v->file = filedup(f);
+  v->used = 1;
+  p->mmaptop += len;
+  return v->addr;
+}
+
+uint64
+sys_munmap(void)
+{
+  uint64 addr;
+  int length;
+
+  if(argaddr(0, &addr) < 0 || argint(1, &length) < 0 || length <= 0)
+    return -1;
+  return vma_munmap(myproc(), addr, PGROUNDUP((uint64)length));
+}
+
+uint64
 sys_pipe(void)
 {
   uint64 fdarray; // user pointer to array of two integers
@@ -482,4 +539,3 @@ sys_pipe(void)
   }
   return 0;
 }
-

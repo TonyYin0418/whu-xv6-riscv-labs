@@ -75,7 +75,7 @@ kvminithart()
 //   21..39 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
 //    0..12 -- 12 bits of byte offset within the page.
-static pte_t *
+pte_t *
 walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
@@ -204,6 +204,23 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 size, int do_free)
       break;
     a += PGSIZE;
     pa += PGSIZE;
+  }
+}
+
+// Remove only pages that have actually been faulted in.  Lazy VMA ranges
+// intentionally contain unmapped pages, so the ordinary uvmunmap() is too
+// strict for them.
+void
+uvmunmap_lazy(pagetable_t pagetable, uint64 va, uint64 size)
+{
+  uint64 a;
+  pte_t *pte;
+
+  for(a = PGROUNDDOWN(va); a < va + size; a += PGSIZE){
+    if((pte = walk(pagetable, a, 0)) != 0 && (*pte & PTE_V)){
+      kfree((void*)PTE2PA(*pte));
+      *pte = 0;
+    }
   }
 }
 

@@ -24,6 +24,8 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int ntas();
+void *mmap(void *, int, int, int, int, int);
+int munmap(void *, int);
 int crash(const char*, int);
 int mount(char*, char *);
 int umount(char*);

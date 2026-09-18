@@ -4,6 +4,10 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
+#include "fcntl.h"
 #include "defs.h"
 
 struct spinlock tickslock;
@@ -18,6 +22,47 @@ extern int devintr();
 
 static const char *
 scause_desc(uint64 stval);
+
+static int
+mmap_fault(struct proc *p, uint64 va, uint64 scause)
+{
+  int i, n, perm;
+  char *mem;
+  struct vma *v = 0;
+
+  va = PGROUNDDOWN(va);
+  for(i = 0; i < NVMA; i++)
+    if(p->vma[i].used && va >= p->vma[i].addr &&
+       va < p->vma[i].addr + p->vma[i].length){
+      v = &p->vma[i];
+      break;
+    }
+  if(v == 0 || (scause == 13 && !(v->prot & PROT_READ)) ||
+     (scause == 15 && !(v->prot & PROT_WRITE)))
+    return -1;
+
+  if((mem = kalloc()) == 0)
+    return -1;
+  memset(mem, 0, PGSIZE);
+  ilock(v->file->ip);
+  n = readi(v->file->ip, 0, (uint64)mem, v->offset + va - v->addr, PGSIZE);
+  iunlock(v->file->ip);
+  if(n < 0){
+    kfree(mem);
+    return -1;
+  }
+  perm = PTE_U;
+  if(v->prot & PROT_READ)
+    perm |= PTE_R;
+  if(v->prot & PROT_WRITE)
+    // RISC-V does not permit a writable leaf PTE without PTE_R.
+    perm |= PTE_R | PTE_W;
+  if(mappages(p->pagetable, va, PGSIZE, (uint64)mem, perm) != 0){
+    kfree(mem);
+    return -1;
+  }
+  return 0;
+}
 
 void
 trapinit(void)
@@ -68,6 +113,9 @@ usertrap(void)
     intr_on();
 
     syscall();
+  } else if((r_scause() == 13 || r_scause() == 15) &&
+            mmap_fault(p, r_stval(), r_scause()) == 0){
+    // Lazy file-backed VMA page fault repaired above.
   } else if((which_dev = devintr()) != 0){
     // ok
   } else {

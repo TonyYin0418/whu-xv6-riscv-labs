@@ -6,6 +6,7 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "file.h"
+#include "fcntl.h"
 #include "proc.h"
 #include "defs.h"
 
@@ -107,6 +108,9 @@ allocproc(void)
 
 found:
   p->pid = allocpid();
+  memset(p->vma, 0, sizeof(p->vma));
+  // Keep file mappings well above the ordinary heap, below TRAPFRAME.
+  p->mmaptop = 0x400000000L;
 
   // Allocate a trapframe page.
   if((p->tf = (struct trapframe *)kalloc()) == 0){
@@ -132,6 +136,7 @@ found:
 static void
 freeproc(struct proc *p)
 {
+  vma_free(p);
   if(p->tf)
     kfree((void*)p->tf);
   p->tf = 0;
@@ -145,7 +150,74 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
+  p->mmaptop = 0;
   p->state = UNUSED;
+}
+
+// Write back the mapped range before removing MAP_SHARED writable pages.
+static void
+vma_writeback(struct proc *p, struct vma *v, uint64 addr, uint64 length)
+{
+  uint64 va;
+  pte_t *pte;
+
+  if((v->flags & MAP_SHARED) == 0 || (v->prot & PROT_WRITE) == 0)
+    return;
+  for(va = addr; va < addr + length; va += PGSIZE){
+    pte = walk(p->pagetable, va, 0);
+    if(pte == 0 || (*pte & PTE_V) == 0)
+      continue;
+    begin_op(v->file->ip->dev);
+    ilock(v->file->ip);
+    writei(v->file->ip, 0, PTE2PA(*pte), v->offset + va - v->addr, PGSIZE);
+    iunlock(v->file->ip);
+    end_op(v->file->ip->dev);
+  }
+}
+
+// Unmap only a VMA prefix, suffix, or its whole range, as required by Lab6.
+int
+vma_munmap(struct proc *p, uint64 addr, uint64 length)
+{
+  int i;
+  struct vma *v = 0;
+
+  if(length == 0 || (length % PGSIZE) != 0)
+    return -1;
+  for(i = 0; i < NVMA; i++)
+    if(p->vma[i].used && addr >= p->vma[i].addr &&
+       addr + length <= p->vma[i].addr + p->vma[i].length){
+      v = &p->vma[i];
+      break;
+    }
+  if(v == 0 || (addr != v->addr && addr + length != v->addr + v->length))
+    return -1;
+
+  vma_writeback(p, v, addr, length);
+  uvmunmap_lazy(p->pagetable, addr, length);
+
+  if(addr == v->addr){
+    v->addr += length;
+    v->offset += length;
+  }
+  v->length -= length;
+  if(v->length == 0){
+    fileclose(v->file);
+    memset(v, 0, sizeof(*v));
+  }
+  return 0;
+}
+
+void
+vma_free(struct proc *p)
+{
+  int i;
+
+  if(p->pagetable == 0)
+    return;
+  for(i = 0; i < NVMA; i++)
+    if(p->vma[i].used)
+      vma_munmap(p, p->vma[i].addr, p->vma[i].length);
 }
 
 // Create a page table for a given process,
@@ -277,6 +349,14 @@ fork(void)
       np->ofile[i] = filedup(p->ofile[i]);
   np->cwd = idup(p->cwd);
 
+  for(i = 0; i < NVMA; i++){
+    if(p->vma[i].used){
+      np->vma[i] = p->vma[i];
+      np->vma[i].file = filedup(p->vma[i].file);
+    }
+  }
+  np->mmaptop = p->mmaptop;
+
   safestrcpy(np->name, p->name, sizeof(p->name));
 
   pid = np->pid;
@@ -324,6 +404,8 @@ exit(int status)
 
   if(p == initproc)
     panic("init exiting");
+
+  vma_free(p);
 
   // Close all open files.
   for(int fd = 0; fd < NOFILE; fd++){
