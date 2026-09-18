@@ -38,6 +38,10 @@ start()
   w_mideleg(0xffff);
   w_sie(r_sie() | SIE_SEIE | SIE_STIE | SIE_SSIE);
 
+  // 允许 S 模式访问全部物理内存，否则新版 QEMU 会在 mret 后报错。
+  w_pmpaddr0(0x3fffffffffffffull);
+  w_pmpcfg0(0xf);
+
   // ask for clock interrupts.
   timerinit();
 
