@@ -141,6 +141,7 @@ UPROGS=\
 	$U/_zombie\
 	$U/_cowtest\
 	$U/_uthread\
+	$U/_alarmtest\
 	$U/_call\
 	$U/_testsh\
 	$U/_kalloctest\
