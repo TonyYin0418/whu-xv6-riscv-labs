@@ -38,6 +38,19 @@ w_mepc(uint64 x)
   asm volatile("csrw mepc, %0" : : "r" (x));
 }
 
+// 当前 QEMU 要求机器态显式授权 S 模式访问物理内存。
+static inline void
+w_pmpcfg0(uint64 x)
+{
+  asm volatile("csrw pmpcfg0, %0" : : "r" (x));
+}
+
+static inline void
+w_pmpaddr0(uint64 x)
+{
+  asm volatile("csrw pmpaddr0, %0" : : "r" (x));
+}
+
 // Supervisor Status Register, sstatus
 
 #define SSTATUS_SPP (1L << 8)  // Previous mode, 1=Supervisor, 0=User
