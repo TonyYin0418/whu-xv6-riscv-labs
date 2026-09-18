@@ -24,6 +24,7 @@ char* sbrk(int);
 int sleep(int);
 int uptime(void);
 int ntas();
+int symlink(const char*, const char*);
 int crash(const char*, int);
 int mount(char*, char *);
 int umount(char*);

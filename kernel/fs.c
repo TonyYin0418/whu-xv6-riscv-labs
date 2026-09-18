@@ -371,7 +371,8 @@ iunlockput(struct inode *ip)
 // The content (data) associated with each inode is stored
 // in blocks on the disk. The first NDIRECT block numbers
 // are listed in ip->addrs[].  The next NINDIRECT blocks are
-// listed in block ip->addrs[NDIRECT].
+// listed in ip->addrs[NDIRECT]. The final entry points to a
+// doubly-indirect block containing NINDIRECT indirect-block addresses.
 
 // Return the disk block address of the nth block in inode ip.
 // If there is no such block, bmap allocates one.
@@ -396,6 +397,33 @@ bmap(struct inode *ip, uint bn)
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    return addr;
+  }
+
+  bn -= NINDIRECT;
+  if(bn < NDINDIRECT){
+    uint outer, inner;
+
+    // 先由双重间接块定位单重间接块，再定位实际数据块。
+    if((addr = ip->addrs[NDIRECT+1]) == 0)
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    outer = bn / NINDIRECT;
+    if((addr = a[outer]) == 0){
+      a[outer] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+
+    bp = bread(ip->dev, addr);
+    a = (uint*)bp->data;
+    inner = bn % NINDIRECT;
+    if((addr = a[inner]) == 0){
+      a[inner] = addr = balloc(ip->dev);
       log_write(bp);
     }
     brelse(bp);
@@ -434,6 +462,25 @@ itrunc(struct inode *ip)
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    a = (uint*)bp->data;
+    for(i = 0; i < NINDIRECT; i++){
+      if(a[i]){
+        struct buf *ibp = bread(ip->dev, a[i]);
+        uint *ia = (uint*)ibp->data;
+        for(j = 0; j < NINDIRECT; j++)
+          if(ia[j])
+            bfree(ip->dev, ia[j]);
+        brelse(ibp);
+        bfree(ip->dev, a[i]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
   }
 
   ip->size = 0;
