@@ -113,8 +113,10 @@ changes under the platform's rules.
   `kernel/.kalloc.c.swp` was already present as an untracked Vim swap file and
   is not part of the macOS compatibility work.
 - Do not commit changes unless the user explicitly requests a commit.
-- Respect the course's academic-integrity requirements. Do not help someone
-  copy lab implementations before they have completed the work independently.
+- This course explicitly permits AI collaboration. AI may assist with
+  implementation, debugging, testing, process documentation, and preparation
+  of the course-required replacement-file archive. Continue to follow the
+  course's requirements for attribution, submission scope, and platform rules.
 - Do not add files, targets, tests, or bookkeeping artifacts that the lab does
   not require. In particular, Lab4 does not need a `time.txt` submission file
   on the school's assessment platform.
@@ -133,18 +135,23 @@ Those maintenance rules belong in this `AGENTS.md` file.
 ## Lab branch organization
 
 `main` is the remote default branch. It contains repository guidance only and
-does not contain a lab implementation. Each course lab lives on its own
-branch. `lab3` covers Buddy allocation and lazy allocation; `lab4` covers
-copy-on-write `fork` and related memory-management work.
+does not contain a lab implementation. The user may temporarily place the
+source course documents for upcoming labs on `main`; treat them as staging
+material and do not mix them into a lab implementation branch. Each course lab
+lives on its own branch. `lab3` covers Buddy allocation and lazy allocation;
+`lab4` covers copy-on-write `fork` and related memory-management work.
 
 Different lab branches may start from different upstream xv6 versions, so do
 not merge one lab branch into another. When the user supplies a corrected lab
 archive, the last version they explicitly confirm is the authoritative starting
-tree. Do not retain that archive's upstream Git ancestry, authors, remote
-branches, or remote URL. Record its files as a new parentless root commit named
-`labN: record initial platform snapshot`, and point the lightweight `labN-start`
-tag at that commit. Do not create `labN-finished` tags; the branch head
-represents its current state.
+tree. For every Lab, including Lab4 and later labs sourced from the course
+repository's `origin/<course-branch>` refs, do not retain that archive's
+upstream Git ancestry, authors, remote branches, or remote URL. Record the
+exact checked-out tree as a new parentless root commit named
+`labN: record initial platform snapshot`, with the source course branch and
+commit SHA in the commit body. Point the lightweight `labN-start` tag at that
+commit. Do not create `labN-finished` tags; the branch head represents its
+current state.
 
 Keep commits in this order, matching the established Lab3 layout:
 
@@ -159,6 +166,17 @@ separate commits. Prefer the smallest changes that directly satisfy the lab,
 with concise Chinese comments around non-obvious logic rather than excessive
 annotation or extra abstractions. This makes it possible to inspect or submit
 only the changes required by the course platform.
+
+For each future Lab, use this delivery workflow after its course document is
+available: establish the confirmed parentless snapshot; implement only the
+documented requirements; perform one final clean build and the required course
+validation; write the detailed Chinese process guide; and produce a temporary
+submission archive containing only the files the course says to replace.
+Exclude host-compatibility changes, guides, build products, local notes, and
+unrelated files from that archive. Report the exact test results and archive
+contents to the user, then remove the temporary archive when it is no longer
+needed. The course platform remains authoritative when it differs from local
+results.
 
 ## Lab4-specific notes
 
